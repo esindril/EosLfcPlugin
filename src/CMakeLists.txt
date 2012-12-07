@@ -27,20 +27,25 @@ link_directories( ${LFC_LIB_DIR} )
 add_library( EosLfcPlugin MODULE
 	     LfcString.cc            LfcString.hh
 	     LfcCache.cc             LfcCache.hh
-	     EosLfcPlugin.cc      EosLfcPlugin.hh
+	     EosLfcPlugin.cc         EosLfcPlugin.hh
 	     )
 
+add_library( EosLfcOfsPlugin MODULE 
+	     EosLfcOfsPlugin.cc         EosLfcOfsPlugin.hh
+)  
+
 target_link_libraries( EosLfcPlugin ${LFC_LIB} )
+target_link_libraries( EosLfcOfsPlugin XrdOfs XrdServer )
 
 if (Linux)
-  set_target_properties ( EosLfcPlugin PROPERTIES
+  set_target_properties ( EosLfcPlugin EosLfcOfsPlugin PROPERTIES
     VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}
     SOVERSION ${VERSION_MAJOR}
     CLEAN_DIRECT_OUTPUT 1
   )
 endif(Linux)
 
-install ( TARGETS EosLfcPlugin 
+install ( TARGETS EosLfcPlugin EosLfcOfsPlugin
           LIBRARY DESTINATION ${LIB_INSTALL_DIR}
           ARCHIVE DESTINATION ${LIB_INSTALL_DIR}
 )

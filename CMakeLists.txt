@@ -36,7 +36,7 @@ project (eoslfcplugin)
 
 if (RELEASE)
 else (RELEASE)
-set(RELEASE "1")
+set(RELEASE "2")
 endif (RELEASE)
 
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)

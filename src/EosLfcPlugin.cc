@@ -197,7 +197,7 @@ EosLfcPlugin::Space( XrdOucErrInfo& Resp,
   //............................................................................
   // Can be left unimplemented as we don't provide this functionality
   //............................................................................
-  return 0;
+  return 1;
 }
 
 

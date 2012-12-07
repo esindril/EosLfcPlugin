@@ -1,19 +1,16 @@
 %define _unpackaged_files_terminate_build 0
 Name:		eoslfcplugin
 Version:	0.1.0
-Release:	1
+Release:	2
 Summary:	LFC name plugin for EOS
 Prefix:         /usr
 Group:		Applications/File
-License:	GNU General Public License as published by the Free Software Foundation, 
-		either version 3 of the License, or (at your option) any later version.
+License:	GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
 Source:        %{name}-%{version}-%{release}.tar.gz
 BuildRoot:     %{_tmppath}/%{name}-root
 
-BuildRequires: cmake >= 2.6
-BuildRequires: lfc-libs >= 1.8
-BuildRequires: lfc-devel >= 1.8
+BuildRequires: cmake >= 2.6, lfc-libs >= 1.8, lfc-devel >= 1.8
 
 Requires:      lfc >= 1.8
 
@@ -46,5 +43,6 @@ rm -rf $RPM_BUILD_ROOT
 %files
 %defattr(-,root,root,-)
 /usr/lib64/libEosLfcPlugin.so
+/usr/lib64/libEosLfcOfsPlugin.so
 
 
