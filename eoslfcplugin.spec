@@ -1,7 +1,7 @@
 %define _unpackaged_files_terminate_build 0
 Name:		eoslfcplugin
 Version:	0.1.0
-Release:	2
+Release:	3
 Summary:	LFC name plugin for EOS
 Prefix:         /usr
 Group:		Applications/File
@@ -36,6 +36,12 @@ cmake ../ -DRELEASE=%{release} -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cd build
 %{__make} install DESTDIR=$RPM_BUILD_ROOT
 echo "Installed!"
+
+%post 
+/sbin/ldconfig
+
+%postun
+/sbin/ldconfig
 
 %clean
 rm -rf $RPM_BUILD_ROOT

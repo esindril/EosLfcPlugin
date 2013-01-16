@@ -45,8 +45,7 @@ static XrdCmsClient* instance = NULL;
 
 using namespace XrdCms;
 
-namespace XrdCms
-{
+namespace XrdCms {
   XrdSysError  LfcError( 0, "EosLfc_" );
   XrdOucTrace  Trace( &LfcError );
 };
@@ -72,13 +71,15 @@ XrdCmsClient* XrdCmsGetClient( XrdSysLogger* logger,
 // Constructor
 //------------------------------------------------------------------------------
 EosLfcPlugin::EosLfcPlugin( XrdSysLogger* logger ):
-  XrdCmsClient( amRemote ),
+  XrdCmsClient( XrdCmsClient::amRemote ),
   mRedirPort( 1094 ),
+  mMetaMgrPort( 1094 ),
   mSessionInitialised( false ),
   mCache( NULL )
 {
   LfcError.logger( logger );
   mRoot.clear();
+  mMetaMgrHost.clear();
   mRedirHost.clear();
 }
 
@@ -104,26 +105,49 @@ EosLfcPlugin::Configure( const char* cfn, char* params, XrdOucEnv* EnvInfo )
   LfcError.Emsg( "Configure", "Using LFC server:", getenv( "LFC_HOST" ) );
   LfcError.Emsg( "Configure", "To enable debug set the env variable LFCDEBUG "
                  "from 0 (no debug) to 2 (full debug)" );
+  char* var =  getenv( "LFCDEBUG" );
 
-  char* c_debug =  getenv( "LFCDEBUG" );
-
-  if ( c_debug ) {
-    LfcError.Emsg( "Configure", "LFCDEBUG=", c_debug );
-    LfcError.setMsgMask( atoi( c_debug ) );
-  }
-  else {
+  //............................................................................
+  // Set the bebug level based on the env variable LFCDEBUG
+  //............................................................................
+  if ( var ) {
+    LfcError.Emsg( "Configure", "LFCDEBUG=", var );
+    LfcError.setMsgMask( atoi( var ) );
+  } else {
     LfcError.Emsg( "Configure", "LFCDEBUG=", 0 );
     LfcError.setMsgMask( 0 );
   }
- 
+
+
+  //............................................................................
+  // Get the uplink host to which we redirect when the file is not in EOS
+  //............................................................................
+  var = getenv( "N2N_UPLINK_HOST" );
+  if ( var ) {
+    mMetaMgrHost = var;
+    LfcError.Emsg( "Configure", "N2N_UPLINK_HOST=", var );
+  } else {
+    LfcError.Emsg( "Configure", "No uplink host is configured, set N2N_UPLINK_HOST" );
+    return 0;
+  }
+
+  var = getenv( "N2N_UPLINK_PORT" );
+  if ( var ) {
+    mMetaMgrPort = atoi( var );
+    LfcError.Emsg( "Configure", "N2N_UPLINK_PORT=", var );
+  } else {
+    LfcError.Emsg( "Configure", "Use the default uplink port number: 1094" );
+    mMetaMgrPort = 1094;
+  }
+
   //............................................................................
   // Initialize Cthread library - should be called before any LFC-API function
   //............................................................................
   serrno = 0;
 
   if ( params && ParseParameters( params ) ) {
-    LfcError.Emsg( "Configure", "Error while parsing parameters." );
-    return NULL;
+    LfcError.Emsg( "Configure", "Error while parsing parameters" );
+    return 0;
   }
 
   if ( Cthread_init() ) {
@@ -132,7 +156,7 @@ EosLfcPlugin::Configure( const char* cfn, char* params, XrdOucEnv* EnvInfo )
   }
 
   if ( StartLfcSession() ) {
-    LfcError.Emsg( "Configure", "Error while starting LFC session." );
+    LfcError.Emsg( "Configure", "Error while starting LFC session" );
     return 0;
   }
 
@@ -150,7 +174,7 @@ EosLfcPlugin::Locate( XrdOucErrInfo& Resp,
                       XrdOucEnv*     Info )
 {
   XrdSecEntity* sec_entity = NULL;
-  
+
   if ( Info ) {
     sec_entity = const_cast<XrdSecEntity*>( Info->secEnv() );
 
@@ -158,30 +182,32 @@ EosLfcPlugin::Locate( XrdOucErrInfo& Resp,
       sec_entity = new XrdSecEntity( "" );
       sec_entity->tident = new char[16];
       sec_entity->tident = strncpy( sec_entity->tident, "unknown", 7 );
-    }  
+    }
   }
- 
-  std::string retString = mRedirHost ;
-  retString += "?eos.lfn=";
+
+  std::string retString ;
   LfcString pfn;
 
   if ( !Lfn2Pfn( path, pfn, sec_entity ) ) {
     const char* filePath;
     filePath = strstr( pfn.c_str(), mRoot.c_str() );
+    retString = mRedirHost ;
 
     if ( filePath ) {
+      retString += "?eos.lfn=";
       retString += filePath;
+      retString += "&eos.app=lfc";
     }
+
+    Resp.setErrCode( mRedirPort );
   } else {
     LfcError.Emsg( "Locate", sec_entity->tident,
-                   "error=pfn could not be found, just redirect for lfn=", path );
+                   "error=pfn not found, redirect to meta_mgr for lfn=", path );
+    retString = mMetaMgrHost.c_str();
+    Resp.setErrCode( mMetaMgrPort );
   }
-
-  retString += "&eos.app=lfc";
-
-  Resp.setErrCode( mRedirPort );
+  
   Resp.setErrData( retString.c_str() );
-
   return SFS_REDIRECT;
 }
 
@@ -197,7 +223,7 @@ EosLfcPlugin::Space( XrdOucErrInfo& Resp,
   //............................................................................
   // Can be left unimplemented as we don't provide this functionality
   //............................................................................
-  return 1;
+  return 0;
 }
 
 
@@ -244,7 +270,7 @@ EosLfcPlugin::ParseParameters( LfcString input )
 
   for ( it = tokens.begin(); it != tokens.end(); it++ ) {
     VectStrings keyval = it->Split( "=" );
-    
+
     if ( keyval.size() != 2 ) {
       LfcError.Emsg( "ParseParameters", "EOS-LFC: Invalid parameter: ", *it );
       return EINVAL;
@@ -259,36 +285,36 @@ EosLfcPlugin::ParseParameters( LfcString input )
       mRedirHost = val;
     } else if ( key == "rdrport" ) {
       if ( !( std::stringstream( val ) >> mRedirPort ) ) {
-        LfcError.Emsg( "ParseParameters", "EOS-LFC: Invalid numeric parameter: ", val );
+        LfcError.Emsg( "ParseParameters", "EOS-LFC: Invalid numeric rdrport: ", val );
         return EINVAL;
       }
-    }else if ( key == "match" ) {
+    } else if ( key == "match" ) {
       mMatch = val.Split( "," );
     } else if ( key == "nomatch" ) {
       mNotMatch = val.Split( "," );
     } else if ( key == "cache_ttl" ) {
       if ( !( std::stringstream( val ) >> cacheTtl ) ) {
-        LfcError.Emsg( "ParseParameters", "EOS-LFC: Invalid numeric parameter: ", val );
+        LfcError.Emsg( "ParseParameters", "EOS-LFC: Invalid numeric cache_ttl: ", val );
         return EINVAL;
       }
     } else if ( key == "cache_maxsize" ) {
       if ( !( stringstream( val ) >> cacheMaxSize ) ) {
-        LfcError.Emsg( "ParseParameters", "EOS-LFC: Invalid numeric parameter: ", val );
+        LfcError.Emsg( "ParseParameters", "EOS-LFC: Invalid numeric cache_maxsize: ", val );
         return EINVAL;
       }
-    }  else {
+    } else {
       LfcError.Emsg( "ParseParameters", "EOS-LFC: Invalid parameter: ", key );
       return EINVAL;
     }
   }
 
-  if ( mRedirHost.empty() ) {
-    LfcError.Emsg( "ParseParameters", "The rdrhost parameter is mandatory!" );
+  if ( mRedirHost.empty() || mMetaMgrHost.empty() ) {
+    LfcError.Emsg( "ParseParameters", "The rdrhost and meta_mgr_host parameters are mandatory!" );
     return ENODATA;
   }
-
+  
   //............................................................................
-  // Initialise the cache after getting all the config params
+  // Initialise the cache and the list of managers after getting all params
   //............................................................................
   mCache = new LfcCache( cacheTtl, cacheMaxSize );
   return 0;
@@ -313,7 +339,7 @@ EosLfcPlugin::Lfn2Pfn( LfcString           lfn,
   //............................................................................
   if ( ( mCache && !( mCache->GetEntry( lfn, pfn ) ) ) || ( !mCache ) ) {
     cache_miss = true;
-    sprintf( msg, "%s Cache miss for lfn=%s.", secEntity->tident, 
+    sprintf( msg, "%s Cache miss for lfn=%s.", secEntity->tident,
              static_cast<char*>( lfn ) );
     LfcError.Log( SYS_LOG_01, "Lfn2Pfn", msg );
 
@@ -358,8 +384,7 @@ EosLfcPlugin::Lfn2Pfn( LfcString           lfn,
         }
       }
     }
-  }
-  else {
+  } else {
     sprintf( msg, "%s Cache hit for lfn=%s -> pfn=%s. ", secEntity->tident,
              static_cast<char*>( lfn ), static_cast<char*>( pfn ) );
     LfcError.Emsg( "Lfn2Pfn", msg ) ;
@@ -378,7 +403,7 @@ EosLfcPlugin::Lfn2Pfn( LfcString           lfn,
     //..........................................................................
     mCache->Insert( lfn, pfn );
   }
- 
+
   return SFS_OK;
 }
 
@@ -445,12 +470,11 @@ EosLfcPlugin::QueryLfc( LfcString lfn, const XrdSecEntity* secEntity )
   char* guid;
   VectStrings::iterator it;
   guid = strstr( ( char* )lfn, "!GUID=" );
-
   //............................................................................
   // Query LFC
   //............................................................................
   mMutexLfc.Lock();      // -->
- 
+
   if ( guid == NULL ) {
     status = lfc_getreplica( lfn, NULL/*guid*/, NULL/*se*/, &n_entries, &rep_entries );
   } else {
@@ -485,7 +509,7 @@ EosLfcPlugin::QueryLfc( LfcString lfn, const XrdSecEntity* secEntity )
 
     sprintf( msg, "%s Testing pfn=%s. ", secEntity->tident, static_cast<char*>( pfn ) );
     LfcError.Log( SYS_LOG_02, "Lfn2Pfn", msg ) ;
-
+    
     //..........................................................................
     // Check for forbidden substrings
     //..........................................................................
@@ -527,13 +551,12 @@ EosLfcPlugin::QueryLfc( LfcString lfn, const XrdSecEntity* secEntity )
       //               static_cast<char*>( lfn ) );
       continue;
     }
-   
+
     sprintf( msg, "%s Found match for rewritten lfn=%s -> pfn=%s using matching=%s. ",
              secEntity->tident, static_cast<char*>( lfn ), static_cast<char*>( pfn ),
              static_cast<char*>( *it ) );
     LfcError.Emsg( "Lfn2Pfn", msg ) ;
     replica_found = true;
-    
     break;
   }
 
@@ -568,6 +591,7 @@ EosLfcPlugin::FindMatchingLfcDirs( LfcString lfn )
   it--;
   LfcString dirname = *it;
   LfcString parent_path = LfcString::Join( VectStrings( components.begin(), it ), "/" );
+  
   //..........................................................................
   // Trying in case the name space is using the old format
   //
@@ -576,9 +600,7 @@ EosLfcPlugin::FindMatchingLfcDirs( LfcString lfn )
   //..........................................................................
   it--;
   LfcString old_path = LfcString::Join( VectStrings( components.begin(), it ), "/" );
-  
   mMutexLfc.Lock();      // -->
-  
   lfc_DIR* lfcdir = lfc_opendir( parent_path );
   struct dirent* dirent = lfc_readdir( lfcdir );
 
@@ -593,6 +615,7 @@ EosLfcPlugin::FindMatchingLfcDirs( LfcString lfn )
   }
 
   lfc_closedir( lfcdir );
+  
   //............................................................................
   // Try the old path
   //............................................................................
@@ -610,8 +633,7 @@ EosLfcPlugin::FindMatchingLfcDirs( LfcString lfn )
   }
 
   lfc_closedir( lfcdir );
-  
   mMutexLfc.UnLock();    //  <--
-  
   return ret;
 }
+

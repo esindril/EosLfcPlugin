@@ -45,8 +45,8 @@ if (Linux)
   )
 endif(Linux)
 
-install ( TARGETS EosLfcPlugin EosLfcOfsPlugin
-          LIBRARY DESTINATION ${LIB_INSTALL_DIR}
-          ARCHIVE DESTINATION ${LIB_INSTALL_DIR}
+install( TARGETS EosLfcPlugin EosLfcOfsPlugin
+         LIBRARY DESTINATION ${LIB_INSTALL_DIR}
+         ARCHIVE DESTINATION ${LIB_INSTALL_DIR}
 )
 

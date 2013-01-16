@@ -32,6 +32,7 @@
 /*----------------------------------------------------------------------------*/
 #include "XrdCms/XrdCmsClient.hh"
 #include "XrdOuc/XrdOucErrInfo.hh"
+#include "XrdOuc/XrdOucTList.hh"
 #include "XrdOss/XrdOss.hh"
 #include "XrdSys/XrdSysPthread.hh"
 #include "XrdSec/XrdSecEntity.hh"
@@ -42,10 +43,12 @@
 #define LFC_CACHE_TTL 2*3600         // 2 hours
 #define LFC_CACHE_MAXSIZE 500000
 
-// Forward declaration
+//! Forward declaration
 class LfcCache;
 
+//..............................................................................
 //! Initialize Cthread library - should be called before any LFC-API function
+//..............................................................................
 extern "C"
 {
   int Cthread_init();
@@ -66,13 +69,13 @@ class EosLfcPlugin: public XrdCmsClient
 
 
     //--------------------------------------------------------------------------
-    //! Constructor
+    //! Destructor
     //--------------------------------------------------------------------------
     virtual ~EosLfcPlugin();
-
+ 
 
     //--------------------------------------------------------------------------
-    //! Configue() is called to configure the client. If the client is obtained 
+    //! Configue() is called to configure the client. If the client is obtained
     //!            via a plug-in then Parms are the  parameters specified after
     //!            cmslib path. It is zero if no parameters exist.
     //! @return:   If successful, true must be returned; otherise, false
@@ -123,7 +126,8 @@ class EosLfcPlugin: public XrdCmsClient
     virtual int Space( XrdOucErrInfo& Resp,
                        const char*    path,
                        XrdOucEnv*     Info = 0 );
-
+ 
+  
     //--------------------------------------------------------------------------
     //! CMS Client Instantiator
     //!
@@ -141,11 +145,14 @@ class EosLfcPlugin: public XrdCmsClient
   private:
 
     std::string mRoot;          ///< the root directory we are interested in
-    std::string mRedirHost;     ///< host to where we redirect 
-    unsigned int mRedirPort;    ///< port to where we redirect, by default 1094
+    std::string mRedirHost;     ///< host to where we redirect in EOS
+    unsigned int mRedirPort;    ///< port to where we redirect in EOS, by default 1094
+    std::string mMetaMgrHost;   ///< meta mgr to which we redirect when req is not in EOS
+    unsigned int mMetaMgrPort;  ///< meta mgr port to where we redirect, by default 1094
     bool mSessionInitialised;   ///< mark if the LFC session has been initialised
     VectStrings mMatch;         ///< string to match in the path found
     VectStrings mNotMatch;      ///< string not to match in the path found
+    XrdOucTList* mListMgr;      ///< list of managers up the tree
 
     int mLfcCacheTtl;           ///< time to live of the entries in cache
     int mLfcCacheMaxSize;       ///< max size of cache entries
@@ -231,7 +238,6 @@ class EosLfcPlugin: public XrdCmsClient
     //!
     //------------------------------------------------------------------------------
     VectStrings FindMatchingLfcDirs( LfcString lfn );
-
 };
 
 #endif // __EOS_PLUGIN_CMSLFCPLUGIN_HH__  

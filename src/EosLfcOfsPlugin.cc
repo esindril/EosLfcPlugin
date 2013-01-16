@@ -32,7 +32,7 @@
 /*----------------------------------------------------------------------------*/
 
 // The global OFS handle
-EosLfcOfsPlugin gOFS;
+EosLfcOfsPlugin* gOFS;
 
 extern XrdSysError OfsEroute;
 extern XrdOssSys  *XrdOfsOss;
@@ -65,21 +65,37 @@ extern "C"
     //static XrdVERSIONINFODEF( info, XrdOss, XrdVNUMBER, XrdVERSION);
 
     // Initialize the subsystems
-    //
-    gOFS.ConfigFN = (configfn && *configfn ? strdup(configfn) : 0);
+    gOFS = new EosLfcOfsPlugin();
+    
+    gOFS->ConfigFN = (configfn && *configfn ? strdup(configfn) : 0);
 
-    if ( gOFS.Configure(OfsEroute) ) return 0;
-    // Initialize the target storage system
-    //
-
-    if (!(XrdOfsOss = (XrdOssSys*) XrdOssGetSS(lp, configfn, 
-                                               gOFS.OssLib ))) {
-      return 0;
-    } 
-
-    XrdOfsFS = &gOFS;
-    return &gOFS;
+    if ( gOFS->Configure(OfsEroute) ) return 0;
+    
+    XrdOfsFS = gOFS;
+    return gOFS;
   }
+}
+
+//------------------------------------------------------------------------------
+// Constructor 
+//------------------------------------------------------------------------------
+EosLfcOfsPlugin::EosLfcOfsPlugin(): XrdOfs()
+{
+  //............................................................................
+  // If this parameter is not present, then also the configuration which is
+  // called afterwards will fail. So we do no error checking here.
+  //............................................................................
+  char* var = getenv( "N2N_UPLINK_HOST" );
+  mMetaMgrHost = var;
+};
+
+
+//------------------------------------------------------------------------------
+// Destructor
+//------------------------------------------------------------------------------
+EosLfcOfsPlugin::~EosLfcOfsPlugin()
+{
+  //empty
 }
 
 
@@ -87,7 +103,7 @@ extern "C"
 //! Rewrite the stat method so that, the redirection actually returns OK if the
 //! LFC transaltion results in a redirection. This is because the old client can
 //! not handle the redirection, therefore we fake and tell it we have the file,
-//! and once it requests it we actually to the EOS instance with the name
+//! and once it requests it we actually go to the EOS instance with the name
 //! translation already done.
 //------------------------------------------------------------------------------
 int
@@ -100,16 +116,28 @@ EosLfcOfsPlugin::stat( const char*             path,
   int retc = XrdOfs::stat( path, buf, out_error, client, opaque );
 
   if ( retc == SFS_REDIRECT ) {
-    //..........................................................................
-    // Here we just fake a stat info, so that the returning message is not empty,
-    // anyway if the file does not exitst ( although it should, as we found it
-    // in LFC ) then the client will get an error while trying to access it in EOS
-    //..........................................................................
-    lstat( "/etc/passwd", buf );
-    OfsEroute.Emsg( "EosLfcOfsPlugin::stat", "got redirection for the stat but we "
-                    "just return OK as the old client can not handle the redirection." );
-
-    return SFS_OK;
+    std::string err_data = out_error.getErrData();
+   
+    if ( err_data == mMetaMgrHost ) {
+      //........................................................................
+      // If the file is not in EOS we redirect up to a meta manager and we
+      // signal that we don't have the file by replying SFS_ERROR
+      //........................................................................
+      OfsEroute.Emsg( "EosLfcOfsPlugin::stat", "got redirection because the file is not "
+                    "in EOS according to LFC" );
+      return SFS_ERROR;
+    }
+    else {
+      //..........................................................................
+      // Here we just fake a stat info, so that the returning message is not empty,
+      // anyway if the file does not exitst ( although it should, as we found it
+      // in LFC ) then the client will get an error while trying to access it in EOS
+      //..........................................................................
+      lstat( "/etc/passwd", buf );
+      OfsEroute.Emsg( "EosLfcOfsPlugin::stat", "got redirection because the file is not "
+                      "but we return SFS_OK as the file is in EOS" );
+      return SFS_OK;
+    }
   }
 
   return retc;

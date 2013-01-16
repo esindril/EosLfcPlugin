@@ -36,7 +36,7 @@ project (eoslfcplugin)
 
 if (RELEASE)
 else (RELEASE)
-set(RELEASE "2")
+set(RELEASE "3")
 endif (RELEASE)
 
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
@@ -58,7 +58,7 @@ add_subdirectory(src)
 ################################################################################
 # source packaging 
 ################################################################################
-add_custom_target(dist COMMAND ${CMAKE_MAKE_PROGRAM} package_source)
+add_custom_target( dist COMMAND ${CMAKE_MAKE_PROGRAM} package_source )
 
 set(CPACK_PACKAGE_VERSION_MAJOR ${VERSION_MAJOR})
 set(CPACK_PACKAGE_VERSION_MINOR ${VERSION_MINOR})
@@ -74,13 +74,13 @@ include(CPack)
 # source + binary rpms
 ################################################################################
 
-ADD_CUSTOM_TARGET(srpm COMMAND rpmbuild -ts ${CMAKE_PROJECT_NAME}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}-${RELEASE}.tar.gz)
+add_custom_target( srpm COMMAND rpmbuild -ts ${CMAKE_PROJECT_NAME}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}-${RELEASE}.tar.gz )
 
-ADD_DEPENDENCIES(srpm dist)
+add_dependencies( srpm dist )
 
-ADD_CUSTOM_TARGET(rpm COMMAND rpmbuild -tb ${CMAKE_PROJECT_NAME}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}-${RELEASE}.tar.gz)
+add_custom_target( rpm COMMAND rpmbuild -tb ${CMAKE_PROJECT_NAME}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}-${RELEASE}.tar.gz )
 
-ADD_DEPENDENCIES(rpm dist)
+add_dependencies( rpm dist )
 
 
 
