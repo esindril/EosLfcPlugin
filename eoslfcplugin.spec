@@ -11,6 +11,8 @@ Source:        %{name}-%{version}-%{release}.tar.gz
 BuildRoot:     %{_tmppath}/%{name}-root
 
 BuildRequires: cmake >= 2.6, lfc-libs >= 1.8, lfc-devel >= 1.8
+#BuildRequires: xrootd-server-devel >= 3.3.0
+#BuildRequires: xrootd-private-devel >= 3.3.0
 
 Requires:      lfc >= 1.8
 
