@@ -53,17 +53,20 @@ namespace XrdCms {
 //------------------------------------------------------------------------------
 // CMS Client Instantiator
 //------------------------------------------------------------------------------
-XrdCmsClient* XrdCmsGetClient( XrdSysLogger* logger,
-                               int           opMode,
-                               int           myPort,
-                               XrdOss*       theSS )
+extern "C"
 {
-  if ( instance ) {
+  XrdCmsClient* XrdCmsGetClient( XrdSysLogger* logger,
+                                 int           opMode,
+                                 int           myPort,
+                                 XrdOss*       theSS )
+  {
+    if ( instance ) {
+      return static_cast<XrdCmsClient*>( instance );
+    }
+
+    instance = new EosLfcPlugin( logger );
     return static_cast<XrdCmsClient*>( instance );
   }
-
-  instance = new EosLfcPlugin( logger );
-  return static_cast<XrdCmsClient*>( instance );
 }
 
 
@@ -177,14 +180,15 @@ EosLfcPlugin::Locate( XrdOucErrInfo& Resp,
 
   if ( Info ) {
     sec_entity = const_cast<XrdSecEntity*>( Info->secEnv() );
-
-    if ( !sec_entity ) {
-      sec_entity = new XrdSecEntity( "" );
-      sec_entity->tident = new char[16];
-      sec_entity->tident = strncpy( sec_entity->tident, "unknown", 7 );
-    }
   }
 
+  if ( !sec_entity ) {
+    sec_entity = new XrdSecEntity( "" );
+    sec_entity->tident = new char[16];
+    sec_entity->tident = strncpy( sec_entity->tident, "unknown", 7 );
+    sec_entity->tident[7]='\0';
+  }
+  
   std::string retString ;
   LfcString pfn;
 
@@ -408,7 +412,6 @@ EosLfcPlugin::Lfn2Pfn( LfcString           lfn,
 }
 
 
-
 //------------------------------------------------------------------------------
 // Check if logical file name is already contains the storage root
 //------------------------------------------------------------------------------
@@ -602,37 +605,47 @@ EosLfcPlugin::FindMatchingLfcDirs( LfcString lfn )
   LfcString old_path = LfcString::Join( VectStrings( components.begin(), it ), "/" );
   mMutexLfc.Lock();      // -->
   lfc_DIR* lfcdir = lfc_opendir( parent_path );
-  struct dirent* dirent = lfc_readdir( lfcdir );
+  struct dirent* dirent;
+  
+  if (lfcdir)
+  {
+    dirent = lfc_readdir( lfcdir );
+    
+    while ( dirent != 0 ) {
+      LfcString cName = dirent->d_name;
 
-  while ( dirent != 0 ) {
-    LfcString cName = dirent->d_name;
+      if ( cName.substr( 0, dirname.size() ) == dirname ) {
+        ret.push_back( parent_path + "/" + cName + "/" + filename );
+      }
 
-    if ( cName.substr( 0, dirname.size() ) == dirname ) {
-      ret.push_back( parent_path + "/" + cName + "/" + filename );
+      dirent = lfc_readdir( lfcdir );
     }
 
-    dirent = lfc_readdir( lfcdir );
+    lfc_closedir( lfcdir );
   }
-
-  lfc_closedir( lfcdir );
   
   //............................................................................
   // Try the old path
   //............................................................................
   lfcdir = lfc_opendir( old_path );
-  dirent = lfc_readdir( lfcdir );
 
-  while ( dirent != 0 ) {
-    LfcString cName = dirent->d_name;
-
-    if ( cName.substr( 0, dirname.size() ) == dirname ) {
-      ret.push_back( old_path + "/" + cName + "/" + filename );
-    }
-
+  if (lfcdir)
+  {
     dirent = lfc_readdir( lfcdir );
+
+    while ( dirent != 0 ) {
+      LfcString cName = dirent->d_name;
+      
+      if ( cName.substr( 0, dirname.size() ) == dirname ) {
+        ret.push_back( old_path + "/" + cName + "/" + filename );
+      }
+      
+      dirent = lfc_readdir( lfcdir );
+    }
+    
+    lfc_closedir( lfcdir );
   }
 
-  lfc_closedir( lfcdir );
   mMutexLfc.UnLock();    //  <--
   return ret;
 }

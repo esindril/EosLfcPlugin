@@ -65,7 +65,7 @@ class EosLfcPlugin: public XrdCmsClient
     //--------------------------------------------------------------------------
     //! Constructor
     //--------------------------------------------------------------------------
-    EosLfcPlugin( XrdSysLogger* logger );
+    EosLfcPlugin(XrdSysLogger* logger);
 
 
     //--------------------------------------------------------------------------
@@ -126,21 +126,6 @@ class EosLfcPlugin: public XrdCmsClient
     virtual int Space( XrdOucErrInfo& Resp,
                        const char*    path,
                        XrdOucEnv*     Info = 0 );
- 
-  
-    //--------------------------------------------------------------------------
-    //! CMS Client Instantiator
-    //!
-    //! @param Logger where messages go
-    //! @param opMode operational mode
-    //! @param myPort server's port number
-    //! @param theSS storage system I/F
-    //!
-    //--------------------------------------------------------------------------
-    friend XrdCmsClient* XrdCmsGetClient( XrdSysLogger* logger,
-                                          int           opMode,
-                                          int           myPort,
-                                          XrdOss*       theSS );
 
   private:
 

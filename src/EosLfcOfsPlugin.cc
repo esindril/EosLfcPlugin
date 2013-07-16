@@ -83,11 +83,20 @@ EosLfcOfsPlugin::EosLfcOfsPlugin(): XrdOfs()
 {
   //............................................................................
   // If this parameter is not present, then also the configuration which is
-  // called afterwards will fail. So we do no error checking here.
+  // called afterwards will fail.
   //............................................................................
   char* var = getenv( "N2N_UPLINK_HOST" );
-  mMetaMgrHost = var;
-};
+
+  if (!var)
+  {
+    OfsEroute.Emsg("EosLfcOfsPlugin", "No N2N_UPLINK_HOST env. variable defined");
+    mMetaMgrHost = "";
+  }
+  else
+  {
+    mMetaMgrHost = var;
+  }
+}
 
 
 //------------------------------------------------------------------------------
@@ -100,10 +109,10 @@ EosLfcOfsPlugin::~EosLfcOfsPlugin()
 
 
 //------------------------------------------------------------------------------
-//! Rewrite the stat method so that, the redirection actually returns OK if the
-//! LFC transaltion results in a redirection. This is because the old client can
-//! not handle the redirection, therefore we fake and tell it we have the file,
-//! and once it requests it we actually go to the EOS instance with the name
+//! Rewrite the stat method so that it actually returns OK if the LFC transaltion
+//! results in a redirection. This is because the old client can not handle the
+//! redirection on stat nad therefore we it fake and tell it we have the file.
+//! Once once it requests it, we actually go to the EOS instance with the name
 //! translation already done.
 //------------------------------------------------------------------------------
 int
@@ -123,8 +132,8 @@ EosLfcOfsPlugin::stat( const char*             path,
       // If the file is not in EOS we redirect up to a meta manager and we
       // signal that we don't have the file by replying SFS_ERROR
       //........................................................................
-      OfsEroute.Emsg( "EosLfcOfsPlugin::stat", "got redirection because the file is not "
-                    "in EOS according to LFC" );
+      OfsEroute.Emsg( "stat", "got redirection because the file is not in EOS "
+                      "according to LFC" );
       return SFS_ERROR;
     }
     else {
@@ -134,8 +143,7 @@ EosLfcOfsPlugin::stat( const char*             path,
       // in LFC ) then the client will get an error while trying to access it in EOS
       //..........................................................................
       lstat( "/etc/passwd", buf );
-      OfsEroute.Emsg( "EosLfcOfsPlugin::stat", "got redirection because the file is not "
-                      "but we return SFS_OK as the file is in EOS" );
+      OfsEroute.Emsg( "stat ", "return SFS_OK as the file is in EOS");
       return SFS_OK;
     }
   }
