@@ -28,6 +28,7 @@
 #include <glob.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <sys/time.h>
 /*----------------------------------------------------------------------------*/
 #include "EosLfcPlugin.hh"
 #include "LfcCache.hh"
@@ -78,12 +79,14 @@ EosLfcPlugin::EosLfcPlugin( XrdSysLogger* logger ):
   mRedirPort( 1094 ),
   mMetaMgrPort( 1094 ),
   mSessionInitialised( false ),
-  mCache( NULL )
+  mCache( NULL ),
+  mMaxLfcSessions(5)
 {
   LfcError.logger( logger );
   mRoot.clear();
   mMetaMgrHost.clear();
   mRedirHost.clear();
+  mSemLfc = XrdSysSemaphore(mMaxLfcSessions);
 }
 
 
@@ -110,9 +113,7 @@ EosLfcPlugin::Configure( const char* cfn, char* params, XrdOucEnv* EnvInfo )
                  "from 0 (no debug) to 2 (full debug)" );
   char* var =  getenv( "LFCDEBUG" );
 
-  //............................................................................
   // Set the bebug level based on the env variable LFCDEBUG
-  //............................................................................
   if ( var ) {
     LfcError.Emsg( "Configure", "LFCDEBUG=", var );
     LfcError.setMsgMask( atoi( var ) );
@@ -121,10 +122,7 @@ EosLfcPlugin::Configure( const char* cfn, char* params, XrdOucEnv* EnvInfo )
     LfcError.setMsgMask( 0 );
   }
 
-
-  //............................................................................
   // Get the uplink host to which we redirect when the file is not in EOS
-  //............................................................................
   var = getenv( "N2N_UPLINK_HOST" );
   if ( var ) {
     mMetaMgrHost = var;
@@ -141,6 +139,16 @@ EosLfcPlugin::Configure( const char* cfn, char* params, XrdOucEnv* EnvInfo )
   } else {
     LfcError.Emsg( "Configure", "Use the default uplink port number: 1094" );
     mMetaMgrPort = 1094;
+  }
+
+  // Get the maximum number of LFC sessions, the default is 5
+  var = getenv( "N2N_MAX_LFC_SESSIONS" );
+  if ( var ) {
+    mMaxLfcSessions = atoi( var );
+    LfcError.Emsg( "Configure", "N2N_MAX_LFC_SESSIONS=", var );
+    mSemLfc = XrdSysSemaphore(mMaxLfcSessions);
+  } else {
+    LfcError.Emsg( "Configure", "Default value of max LFC sessions is: 5" );
   }
 
   //............................................................................
@@ -476,8 +484,6 @@ EosLfcPlugin::QueryLfc( LfcString lfn, const XrdSecEntity* secEntity )
   //............................................................................
   // Query LFC
   //............................................................................
-  mMutexLfc.Lock();      // -->
-
   if ( guid == NULL ) {
     status = lfc_getreplica( lfn, NULL/*guid*/, NULL/*se*/, &n_entries, &rep_entries );
   } else {
@@ -487,8 +493,6 @@ EosLfcPlugin::QueryLfc( LfcString lfn, const XrdSecEntity* secEntity )
                              &n_entries,
                              &rep_entries );
   }
-
-  mMutexLfc.UnLock();    // <--
 
   if ( status ) {
     //..........................................................................
@@ -581,6 +585,10 @@ EosLfcPlugin::QueryLfc( LfcString lfn, const XrdSecEntity* secEntity )
 VectStrings
 EosLfcPlugin::FindMatchingLfcDirs( LfcString lfn )
 {
+  struct timeval start;
+  struct timeval end;
+  gettimeofday(&start, NULL);
+
   VectStrings ret;
   VectStrings components = lfn.Split( "/" );
 
@@ -603,7 +611,8 @@ EosLfcPlugin::FindMatchingLfcDirs( LfcString lfn )
   //..........................................................................
   it--;
   LfcString old_path = LfcString::Join( VectStrings( components.begin(), it ), "/" );
-  mMutexLfc.Lock();      // -->
+
+  mSemLfc.Wait(); // --> decrement semaphore
   lfc_DIR* lfcdir = lfc_opendir( parent_path );
   struct dirent* dirent;
   
@@ -644,9 +653,18 @@ EosLfcPlugin::FindMatchingLfcDirs( LfcString lfn )
     }
     
     lfc_closedir( lfcdir );
+
   }
 
-  mMutexLfc.UnLock();    //  <--
+  mSemLfc.Post(); // <-- increment semaphore
+  gettimeofday(&end, NULL);
+
+  char msg[4096];
+  sprintf( msg, "Lfc_readdir took: %li milisec for lfn=%s",
+           ((end.tv_sec * 1000 + end.tv_usec / 1000) -
+            (start.tv_sec * 1000 + start.tv_usec / 1000)),
+           lfn.c_str());
+  LfcError.Emsg("FindMatchingLfcDir", msg) ;  
   return ret;
 }
 

@@ -141,8 +141,9 @@ class EosLfcPlugin: public XrdCmsClient
 
     int mLfcCacheTtl;           ///< time to live of the entries in cache
     int mLfcCacheMaxSize;       ///< max size of cache entries
-    XrdSysMutex mMutexLfc;      ///< mutex for sync actions on the LFC
+    XrdSysSemaphore mSemLfc;    ///< semaphore for accessing LFC sessions
     LfcCache* mCache;           ///< cache for the LFC entries
+    int mMaxLfcSessions;        ///< max number of concurrent LFC sessions
 
 
     //--------------------------------------------------------------------------
