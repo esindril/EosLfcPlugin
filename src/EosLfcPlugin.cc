@@ -27,18 +27,16 @@
 /*----------------------------------------------------------------------------*/
 #include <glob.h>
 #include <unistd.h>
-#include <dirent.h>
-#include <sys/time.h>
 /*----------------------------------------------------------------------------*/
 #include "EosLfcPlugin.hh"
 #include "LfcCache.hh"
 /*----------------------------------------------------------------------------*/
+#include "XrdOss/XrdOss.hh"
 #include "XrdSfs/XrdSfsInterface.hh"
 #include "XrdSys/XrdSysError.hh"
 #include "XrdSys/XrdSysLogger.hh"
 #include "XrdOuc/XrdOucTrace.hh"
 #include "XrdOuc/XrdOucEnv.hh"
-#include "XrdSec/XrdSecEntity.hh"
 /*----------------------------------------------------------------------------*/
 
 // Singleton variable
@@ -79,14 +77,12 @@ EosLfcPlugin::EosLfcPlugin( XrdSysLogger* logger ):
   mRedirPort( 1094 ),
   mMetaMgrPort( 1094 ),
   mSessionInitialised( false ),
-  mCache( NULL ),
-  mMaxLfcSessions(5)
+  mCache( NULL )
 {
   LfcError.logger( logger );
   mRoot.clear();
   mMetaMgrHost.clear();
   mRedirHost.clear();
-  mSemLfc = XrdSysSemaphore(mMaxLfcSessions);
 }
 
 
@@ -139,16 +135,6 @@ EosLfcPlugin::Configure( const char* cfn, char* params, XrdOucEnv* EnvInfo )
   } else {
     LfcError.Emsg( "Configure", "Use the default uplink port number: 1094" );
     mMetaMgrPort = 1094;
-  }
-
-  // Get the maximum number of LFC sessions, the default is 5
-  var = getenv( "N2N_MAX_LFC_SESSIONS" );
-  if ( var ) {
-    mMaxLfcSessions = atoi( var );
-    LfcError.Emsg( "Configure", "N2N_MAX_LFC_SESSIONS=", var );
-    mSemLfc = XrdSysSemaphore(mMaxLfcSessions);
-  } else {
-    LfcError.Emsg( "Configure", "Default value of max LFC sessions is: 5" );
   }
 
   //............................................................................
@@ -382,19 +368,6 @@ EosLfcPlugin::Lfn2Pfn( LfcString           lfn,
           break;
         }
       }
-
-      if ( !pfn ) {
-        for ( it = possibles.begin(); it != possibles.end(); it++ ) {
-          VectStrings possibles2 = FindMatchingLfcDirs( *it );
-          VectStrings::iterator it2;
-
-          for ( it2 = possibles2.begin(); it2 != possibles2.end(); it2++ ) {
-            if ( pfn = QueryLfc( *it2, secEntity ) ) {
-              break;
-            }
-          }
-        }
-      }
     }
   } else {
     sprintf( msg, "%s Cache hit for lfn=%s -> pfn=%s. ", secEntity->tident,
@@ -578,93 +551,4 @@ EosLfcPlugin::QueryLfc( LfcString lfn, const XrdSecEntity* secEntity )
   return ret;
 }
 
-
-//------------------------------------------------------------------------------
-// Find matching LFC directories - this can be very expensive
-//------------------------------------------------------------------------------
-VectStrings
-EosLfcPlugin::FindMatchingLfcDirs( LfcString lfn )
-{
-  struct timeval start;
-  struct timeval end;
-  gettimeofday(&start, NULL);
-
-  VectStrings ret;
-  VectStrings components = lfn.Split( "/" );
-
-  if ( components.size() < 3 ) {
-    return ret;
-  }
-
-  VectStrings::iterator it = components.end();
-  it--;
-  LfcString filename = *it;
-  it--;
-  LfcString dirname = *it;
-  LfcString parent_path = LfcString::Join( VectStrings( components.begin(), it ), "/" );
-  
-  //..........................................................................
-  // Trying in case the name space is using the old format
-  //
-  // current: /atlas/dq2/data11_7TeV/NTUP_TOP/f369_m812_p530_p577/data11_7TeV.00180309.physics_Egamma.merge.NTUP_TOP.f369_m812_p530_p577_tid367204_00/
-  // old: /atlas/dq2/data11_7TeV/NTUP_TOP/data11_7TeV.00180309.physics_Egamma.merge.NTUP_TOP.f369_m812_p530_p577_tid367204_00_sub021131151/
-  //..........................................................................
-  it--;
-  LfcString old_path = LfcString::Join( VectStrings( components.begin(), it ), "/" );
-
-  mSemLfc.Wait(); // --> decrement semaphore
-  lfc_DIR* lfcdir = lfc_opendir( parent_path );
-  struct dirent* dirent;
-  
-  if (lfcdir)
-  {
-    dirent = lfc_readdir( lfcdir );
-    
-    while ( dirent != 0 ) {
-      LfcString cName = dirent->d_name;
-
-      if ( cName.substr( 0, dirname.size() ) == dirname ) {
-        ret.push_back( parent_path + "/" + cName + "/" + filename );
-      }
-
-      dirent = lfc_readdir( lfcdir );
-    }
-
-    lfc_closedir( lfcdir );
-  }
-  
-  //............................................................................
-  // Try the old path
-  //............................................................................
-  lfcdir = lfc_opendir( old_path );
-
-  if (lfcdir)
-  {
-    dirent = lfc_readdir( lfcdir );
-
-    while ( dirent != 0 ) {
-      LfcString cName = dirent->d_name;
-      
-      if ( cName.substr( 0, dirname.size() ) == dirname ) {
-        ret.push_back( old_path + "/" + cName + "/" + filename );
-      }
-      
-      dirent = lfc_readdir( lfcdir );
-    }
-    
-    lfc_closedir( lfcdir );
-
-  }
-
-  mSemLfc.Post(); // <-- increment semaphore
-  gettimeofday(&end, NULL);
-
-  char msg[4096];
-  sprintf( msg, "Lfc_readdir took: %li milisec for lfn=%s",
-           ((end.tv_sec * 1000 + end.tv_usec / 1000) -
-            (start.tv_sec * 1000 + start.tv_usec / 1000)),
-           lfn.c_str());
-  LfcError.Emsg("FindMatchingLfcDir", msg) ;  
-  return ret;
-}
 

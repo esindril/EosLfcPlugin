@@ -77,6 +77,7 @@ class LfcCache
     //! @param pfn the pfn retrieved from cache
     //!
     //! @return true if entry found in cache, false otherwise
+    //!
     //----------------------------------------------------------------------------
     virtual bool GetEntry( std::string lfn, std::string& pfn );
 

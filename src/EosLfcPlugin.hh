@@ -33,7 +33,6 @@
 #include "XrdCms/XrdCmsClient.hh"
 #include "XrdOuc/XrdOucErrInfo.hh"
 #include "XrdOuc/XrdOucTList.hh"
-#include "XrdOss/XrdOss.hh"
 #include "XrdSys/XrdSysPthread.hh"
 #include "XrdSec/XrdSecEntity.hh"
 /*----------------------------------------------------------------------------*/
@@ -141,10 +140,7 @@ class EosLfcPlugin: public XrdCmsClient
 
     int mLfcCacheTtl;           ///< time to live of the entries in cache
     int mLfcCacheMaxSize;       ///< max size of cache entries
-    XrdSysSemaphore mSemLfc;    ///< semaphore for accessing LFC sessions
     LfcCache* mCache;           ///< cache for the LFC entries
-    int mMaxLfcSessions;        ///< max number of concurrent LFC sessions
-
 
     //--------------------------------------------------------------------------
     //! Start the LFC session
@@ -213,17 +209,6 @@ class EosLfcPlugin: public XrdCmsClient
     //!
     //--------------------------------------------------------------------------
     LfcString QueryLfc( LfcString lfn, const XrdSecEntity* secEntity );
-
-
-    //------------------------------------------------------------------------------
-    //! Find matching LFC directories - this can be very expensive
-    //!
-    //! @param lfn logical file name
-    //!
-    //! @return vector of ??
-    //!
-    //------------------------------------------------------------------------------
-    VectStrings FindMatchingLfcDirs( LfcString lfn );
 };
 
 #endif // __EOS_PLUGIN_CMSLFCPLUGIN_HH__  
